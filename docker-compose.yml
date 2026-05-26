@@ -1,0 +1,62 @@
+# ============================================================
+# GirlBackend - Docker Compose 编排
+# 启动: docker compose up -d
+# 查看: docker compose logs -f app
+# 停止: docker compose down
+# ============================================================
+
+services:
+  # ── PostgreSQL 数据库 ──────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-w12345}
+      POSTGRES_DB: agent
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # 首次启动自动建表（按需启用）
+      # - ./app/sql/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agent"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # ── FastAPI 应用 ─────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # 环境
+      ENV: ${ENV:-production}
+      # 数据库（容器内通过 service name 访问 db）
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-w12345}@db:5432/agent
+      # JWT（生产环境请务必修改）
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-production}
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRE_MINUTES: "10080"
+      # CORS
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      # 微信小程序
+      WECHAT_APP_ID: ${WECHAT_APP_ID:-}
+      WECHAT_APP_SECRET: ${WECHAT_APP_SECRET:-}
+      WECHAT_LOGIN_URL: https://api.weixin.qq.com/sns/jscode2session
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # 上传文件 / 海报等持久化数据
+      - app_static:/app/static
+
+volumes:
+  pgdata:
+  app_static:

@@ -1,0 +1,382 @@
+请根据以下需求，输出一份完整的守护关系接口文档，我会直接转发给前端开发。
+
+## 要求
+1. 文档要清晰、完整，前端能直接照着开发
+2. 包含请求示例和响应示例
+3. 包含错误码说明
+4. 按以下格式输出
+
+---
+
+# 守护关系接口文档
+
+## 基础信息
+- 基础路径：`/api`
+- 认证方式：Bearer Token（除特别说明外，所有接口都需要认证）
+
+---
+
+## 一、守护关系管理
+
+### 1.1 创建守护关系
+**描述**：用户A发起守护用户B的请求
+
+**请求**
+POST /api/guardian/create
+
+text
+
+**参数**
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| target_id | string | 是 | 被守护者用户ID |
+| permissions | array | 是 | 授权权限列表，可选值：record、calendar、stats |
+
+**请求示例**
+```json
+{
+  "target_id": "uuid-of-user-b",
+  "permissions": ["record", "calendar"]
+}
+响应示例
+
+json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "relation_id": 1,
+    "status": "pending"
+  }
+}
+错误码
+
+错误码	说明
+40007	不能守护自己或已存在守护关系
+40101	未登录
+1.2 获取守护请求详情
+描述：被守护者打开确认页面时，查看守护请求的详细信息
+
+请求
+
+text
+GET /api/guardian/detail?relation_id={relation_id}
+参数
+
+参数	类型	必填	说明
+relation_id	int	是	守护关系ID
+响应示例
+
+json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "relation_id": 1,
+    "inviter_id": "uuid-of-user-a",
+    "inviter_name": "小明",
+    "inviter_avatar": "https://example.com/avatar.jpg",
+    "permissions": ["record", "calendar"],
+    "created_at": "2026-05-22T10:00:00Z",
+    "status": "pending"
+  }
+}
+错误码
+
+错误码	说明
+40401	关系不存在
+40301	无权查看
+1.3 确认/拒绝守护请求
+描述：被守护者确认或拒绝守护请求
+
+请求
+
+text
+POST /api/guardian/confirm
+参数
+
+参数	类型	必填	说明
+relation_id	int	是	守护关系ID
+accept	bool	是	true=接受，false=拒绝
+请求示例
+
+json
+{
+  "relation_id": 1,
+  "accept": true
+}
+响应示例
+
+json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "success": true
+  }
+}
+错误码
+
+错误码	说明
+40401	关系不存在
+40301	只有被守护者可确认
+40001	关系已处理
+1.4 获取守护列表
+描述：获取用户的守护关系列表
+
+请求
+
+text
+GET /api/guardian/list
+响应示例
+
+json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "my_guardians": [
+      {
+        "relation_id": 1,
+        "user_id": "uuid-of-user-b",
+        "nickname": "小红",
+        "avatar": "https://example.com/avatar.jpg",
+        "permissions": ["record", "calendar"],
+        "status": 1,
+        "created_at": "2026-05-22T10:00:00Z"
+      }
+    ],
+    "guardians_of_me": [
+      {
+        "relation_id": 2,
+        "user_id": "uuid-of-user-c",
+        "nickname": "小刚",
+        "avatar": "https://example.com/avatar.jpg",
+        "permissions": ["record"],
+        "status": 1,
+        "created_at": "2026-05-21T10:00:00Z"
+      }
+    ]
+  }
+}
+字段说明
+
+字段	说明
+my_guardians	我守护的人（我是 guardian_id）
+guardians_of_me	守护我的人（我是 target_id）
+status	1=已生效，0=待确认
+1.5 移除守护关系
+描述：解除守护关系
+
+请求
+
+text
+POST /api/guardian/remove
+参数
+
+参数	类型	必填	说明
+relation_id	int	是	守护关系ID
+请求示例
+
+json
+{
+  "relation_id": 1
+}
+响应示例
+
+json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "success": true
+  }
+}
+错误码
+
+错误码	说明
+40401	关系不存在
+40301	无权操作
+二、数据查看接口（支持守护人切换视角）
+2.1 日历数据
+描述：获取指定用户的日历数据（守护人可查看被守护者）
+
+请求
+
+text
+GET /api/calendar
+参数
+
+参数	类型	必填	说明
+year	int	是	年份，2000-2100
+month	int	是	月份，1-12
+target_user_id	string	否	目标用户ID（守护人查看被守护者时传入）
+请求示例
+
+bash
+# 查看自己的日历
+GET /api/calendar?year=2026&month=5
+
+# 查看被守护者的日历（需要权限）
+GET /api/calendar?year=2026&month=5&target_user_id=uuid-of-user-b
+响应示例
+
+json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "year": 2026,
+    "month": 5,
+    "today": 22,
+    "record_days": [1, 3, 5, 8, 12, 15, 18, 20, 22],
+    "days": [
+      {"date": "2026-05-01", "day": 1, "has_record": true, "is_current_month": true, "is_today": false}
+    ],
+    "records_map": {
+      "2026-05-01": ["poop", "sleep"],
+      "2026-05-03": ["water"]
+    }
+  }
+}
+错误码
+
+错误码	说明
+40301	无权限查看该用户数据
+40101	未登录
+2.2 今日记录
+描述：获取指定用户的今日记录（守护人可查看被守护者）
+
+请求
+
+text
+GET /api/today/records
+参数
+
+参数	类型	必填	说明
+target_user_id	string	否	目标用户ID（守护人查看被守护者时传入）
+请求示例
+
+bash
+# 查看自己的今日记录
+GET /api/today/records
+
+# 查看被守护者的今日记录（需要权限）
+GET /api/today/records?target_user_id=uuid-of-user-b
+响应示例
+
+json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "poop": [
+      {
+        "id": 1,
+        "record_type": "poop",
+        "record_value": {"shape": "🍌", "color": "#8B4513"},
+        "created_at": "2026-05-22T08:30:00Z"
+      }
+    ],
+    "sleep": [
+      {
+        "id": 2,
+        "record_type": "sleep",
+        "record_value": {"duration": 8, "quality": 4},
+        "created_at": "2026-05-22T09:00:00Z"
+      }
+    ]
+  }
+}
+错误码
+
+错误码	说明
+40301	无权限查看该用户数据
+40101	未登录
+2.3 统计数据
+描述：获取指定用户的统计数据（守护人可查看被守护者）
+
+请求
+
+text
+GET /api/stats
+参数
+
+参数	类型	必填	说明
+period	string	否	month/last_month/all，默认month
+target_user_id	string	否	目标用户ID（守护人查看被守护者时传入）
+请求示例
+
+bash
+# 查看自己的统计
+GET /api/stats?period=month
+
+# 查看被守护者的统计（需要权限）
+GET /api/stats?period=month&target_user_id=uuid-of-user-b
+响应示例
+
+json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "period": "month",
+    "overview": {
+      "poop_count": 18,
+      "sleep_avg_score": 85,
+      "continuous_days": 12,
+      "beat_users_percent": 68
+    },
+    "type_stats": [...],
+    "trend": [...],
+    "distribution": {...},
+    "total_records": 118
+  }
+}
+错误码
+
+错误码	说明
+40301	无权限查看该用户数据
+40101	未登录
+三、权限说明
+权限值	说明	对应接口
+record	查看记录数据	/api/today/records、/api/records
+calendar	查看日历数据	/api/calendar
+stats	查看统计数据	/api/stats
+四、curl 测试命令
+bash
+BASE="http://localhost:8000/api"
+TOKEN="Bearer your-token-here"
+
+# 1. 创建守护关系
+curl -X POST "$BASE/guardian/create" \
+  -H "Authorization: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"target_id": "uuid-of-user-b", "permissions": ["record", "calendar"]}'
+
+# 2. 获取守护请求详情
+curl -X GET "$BASE/guardian/detail?relation_id=1" -H "Authorization: $TOKEN"
+
+# 3. 确认守护
+curl -X POST "$BASE/guardian/confirm" \
+  -H "Authorization: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"relation_id": 1, "accept": true}'
+
+# 4. 获取守护列表
+curl -X GET "$BASE/guardian/list" -H "Authorization: $TOKEN"
+
+# 5. 查看被守护者的日历（需要权限）
+curl -X GET "$BASE/calendar?year=2026&month=5&target_user_id=uuid-of-user-b" \
+  -H "Authorization: $TOKEN"
+
+# 6. 查看被守护者的今日记录（需要权限）
+curl -X GET "$BASE/today/records?target_user_id=uuid-of-user-b" \
+  -H "Authorization: $TOKEN"
+
+# 7. 移除守护关系
+curl -X POST "$BASE/guardian/remove" \
+  -H "Authorization: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"relation_id": 1}'
+请按以上格式输出接口文档，我会直接转发给前端。

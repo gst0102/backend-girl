@@ -1,0 +1,370 @@
+{
+  "meta": {
+    "project": "记一笔日历",
+    "database": "PostgreSQL (asyncpg)",
+    "total_tables": 23,
+    "generated_at": "2026-05-26"
+  },
+  "tables": [
+    {
+      "table_name": "users",
+      "comment": "用户表 - 微信小程序用户信息",
+      "fields": [
+        {"field": "id", "type": "UUID", "pk": true, "default": "gen_random_uuid()", "comment": "用户唯一ID (主键)"},
+        {"field": "openid", "type": "VARCHAR(64)", "nullable": false, "unique": true, "comment": "微信openid"},
+        {"field": "nickname", "type": "VARCHAR(50)", "default": "'用户'", "comment": "用户昵称"},
+        {"field": "avatar", "type": "VARCHAR(20)", "default": "'👤'", "comment": "头像 (emoji或URL)"},
+        {"field": "invite_count", "type": "INTEGER", "default": 0, "comment": "邀请成功人数"},
+        {"field": "continuous_days", "type": "INTEGER", "default": 0, "comment": "连续记录天数"},
+        {"field": "activity_level", "type": "VARCHAR(20)", "default": "'active'", "comment": "活跃状态: active/inactive/churned"},
+        {"field": "last_record_at", "type": "TIMESTAMPTZ", "nullable": true, "comment": "最后记录时间"},
+        {"field": "created_at", "type": "TIMESTAMPTZ", "default": "CURRENT_TIMESTAMP", "comment": "创建时间"},
+        {"field": "updated_at", "type": "TIMESTAMPTZ", "default": "CURRENT_TIMESTAMP", "comment": "更新时间"}
+      ],
+      "indexes": [
+        {"name": "idx_users_openid", "fields": ["openid"], "unique": true},
+        {"name": "idx_users_invite_count", "fields": ["invite_count"]}
+      ]
+    },
+    {
+      "table_name": "records",
+      "comment": "记录表 - 用户健康数据记录 (poop/period/sleep/water/mood/exercise/weight)",
+      "fields": [
+        {"field": "id", "type": "BIGSERIAL", "pk": true, "comment": "记录ID (主键)"},
+        {"field": "user_id", "type": "UUID", "fk": {"table": "users", "field": "id", "on_delete": "CASCADE"}, "comment": "用户ID"},
+        {"field": "record_type", "type": "VARCHAR(20)", "nullable": false, "comment": "记录类型: poop/period/sleep/water/mood/exercise/weight"},
+        {"field": "record_date", "type": "DATE", "nullable": false, "comment": "记录日期 (yyyy-mm-dd)"},
+        {"field": "record_value", "type": "JSONB", "nullable": true, "comment": "扩展值 (各类型的额外数据, 如形状/颜色/分数等)"},
+        {"field": "created_at", "type": "TIMESTAMPTZ", "default": "CURRENT_TIMESTAMP", "comment": "创建时间"}
+      ],
+      "indexes": [
+        {"name": "idx_records_user_type_date", "fields": ["user_id", "record_type", "record_date"], "unique": true},
+        {"name": "idx_records_user_date", "fields": ["user_id", "record_date"]}
+      ]
+    },
+    {
+      "table_name": "invite_relations",
+      "comment": "邀请关系表 - 用户之间的邀请绑定关系",
+      "fields": [
+        {"field": "id", "type": "BIGSERIAL", "pk": true, "comment": "关系ID (主键)"},
+        {"field": "inviter_id", "type": "UUID", "fk": {"table": "users", "field": "id", "on_delete": "CASCADE"}, "comment": "邀请人用户ID"},
+        {"field": "invitee_id", "type": "UUID", "fk": {"table": "users", "field": "id", "on_delete": "CASCADE"}, "comment": "被邀请人用户ID"},
+        {"field": "invitee_openid", "type": "VARCHAR(64)", "nullable": false, "comment": "被邀请人微信openid"},
+        {"field": "invitee_device", "type": "VARCHAR(100)", "nullable": true, "comment": "被邀请人设备标识"},
+        {"field": "created_at", "type": "TIMESTAMPTZ", "default": "CURRENT_TIMESTAMP", "comment": "创建时间"}
+      ],
+      "indexes": [
+        {"name": "idx_invite_relations_invitee_openid", "fields": ["invitee_openid"], "unique": true},
+        {"name": "idx_invite_relations_inviter_id", "fields": ["inviter_id"]}
+      ]
+    },
+    {
+      "table_name": "user_features",
+      "comment": "用户解锁功能表 - 用户已解锁的功能记录",
+      "fields": [
+        {"field": "id", "type": "BIGSERIAL", "pk": true, "comment": "记录ID (主键)"},
+        {"field": "user_id", "type": "UUID", "fk": {"table": "users", "field": "id", "on_delete": "CASCADE"}, "comment": "用户ID"},
+        {"field": "feature_key", "type": "VARCHAR(30)", "nullable": false, "comment": "功能标识: sleep/water/mood/anime_remind/anime_preview/drive"},
+        {"field": "unlocked_at", "type": "TIMESTAMPTZ", "default": "CURRENT_TIMESTAMP", "comment": "解锁时间"}
+      ],
+      "indexes": [
+        {"name": "idx_user_features_user_feature", "fields": ["user_id", "feature_key"], "unique": true}
+      ]
+    },
+    {
+      "table_name": "reward_logs",
+      "comment": "奖励记录表 - 用户获得奖励的日志",
+      "fields": [
+        {"field": "id", "type": "BIGSERIAL", "pk": true, "comment": "记录ID (主键)"},
+        {"field": "user_id", "type": "UUID", "fk": {"table": "users", "field": "id", "on_delete": "CASCADE"}, "comment": "用户ID"},
+        {"field": "reward_type", "type": "VARCHAR(20)", "nullable": false, "comment": "奖励类型: badge/feature/unlock"},
+        {"field": "reward_value", "type": "VARCHAR(50)", "nullable": false, "comment": "奖励值 (如徽章ID/功能key)"},
+        {"field": "grant_reason", "type": "VARCHAR(50)", "nullable": false, "comment": "发放原因: invite/record/daily_check"},
+        {"field": "granted_at", "type": "TIMESTAMPTZ", "default": "CURRENT_TIMESTAMP", "comment": "发放时间"}
+      ],
+      "indexes": [
+        {"name": "idx_reward_logs_user_id", "fields": ["user_id"]}
+      ]
+    },
+    {
+      "table_name": "badges",
+      "comment": "徽章定义表 - 所有徽章模板配置",
+      "fields": [
+        {"field": "id", "type": "VARCHAR(20)", "pk": true, "comment": "徽章ID (如 first_poop/continuous_7)"},
+        {"field": "name", "type": "VARCHAR(30)", "nullable": false, "comment": "徽章名称"},
+        {"field": "icon", "type": "VARCHAR(10)", "nullable": false, "comment": "徽章图标 (emoji)"},
+        {"field": "rarity", "type": "VARCHAR(10)", "nullable": false, "comment": "稀有度: common/rare/epic/legendary"},
+        {"field": "condition_type", "type": "VARCHAR(30)", "nullable": false, "comment": "触发类型: first_record/record_count/continuous_days/sleep_score/invite_count/all_badges"},
+        {"field": "condition_value", "type": "INTEGER", "nullable": false, "comment": "触发阈值 (数量/天数/分数)"}
+      ]
+    },
+    {
+      "table_name": "user_badges",
+      "comment": "用户徽章关联表 - 用户已获得的徽章",
+      "fields": [
+        {"field": "id", "type": "BIGSERIAL", "pk": true, "comment": "关联ID (主键)"},
+        {"field": "user_id", "type": "UUID", "fk": {"table": "users", "field": "id", "on_delete": "CASCADE"}, "comment": "用户ID"},
+        {"field": "badge_id", "type": "VARCHAR(20)", "fk": {"table": "badges", "field": "id", "on_delete": "CASCADE"}, "comment": "徽章ID"},
+        {"field": "earned_at", "type": "TIMESTAMPTZ", "default": "CURRENT_TIMESTAMP", "comment": "获得时间"}
+      ],
+      "indexes": [
+        {"name": "idx_user_badges_user_id", "fields": ["user_id"]}
+      ]
+    },
+    {
+      "table_name": "animes",
+      "comment": "番剧库表 - 影视剧/电影/4K资源库 (由金山文档同步)",
+      "fields": [
+        {"field": "id", "type": "VARCHAR(100)", "pk": true, "comment": "条目ID (主键, 如 '350')"},
+        {"field": "title", "type": "VARCHAR(500)", "nullable": false, "comment": "标题 (如 '歌手 2026')"},
+        {"field": "quality", "type": "VARCHAR(50)", "nullable": true, "comment": "画质: 4K/1080P/720P"},
+        {"field": "episode", "type": "VARCHAR(100)", "nullable": true, "comment": "更新集数 (如 '更5.23'/ '12集全')"},
+        {"field": "status", "type": "VARCHAR(100)", "nullable": true, "comment": "状态: 已完结/超前点播/珍藏版"},
+        {"field": "baidu_url", "type": "VARCHAR(500)", "nullable": true, "comment": "百度网盘链接"},
+        {"field": "baidu_password", "type": "VARCHAR(100)", "nullable": true, "comment": "百度网盘提取码 (默认 1120)"},
+        {"field": "quark_url", "type": "VARCHAR(500)", "nullable": true, "comment": "夸克网盘链接"},
+        {"field": "update_time", "type": "VARCHAR(20)", "nullable": true, "comment": "更新时间 (格式 MM-DD)"},
+        {"field": "type", "type": "VARCHAR(50)", "default": "'anime'", "comment": "类型: anime=番剧/movie=电影/anime_4k=4K影视"},
+        {"field": "created_at", "type": "TIMESTAMPTZ", "default": "CURRENT_TIMESTAMP", "comment": "创建时间"},
+        {"field": "updated_at", "type": "TIMESTAMPTZ", "default": "CURRENT_TIMESTAMP", "comment": "更新时间"}
+      ]
+    },
+    {
+      "table_name": "user_anime_subscriptions",
+      "comment": "用户订阅表 - 用户订阅的番剧/电影/4K资源",
+      "fields": [
+        {"field": "id", "type": "BIGSERIAL", "pk": true, "comment": "订阅ID (主键)"},
+        {"field": "user_id", "type": "UUID", "fk": {"table": "users", "field": "id", "on_delete": "CASCADE"}, "comment": "用户ID"},
+        {"field": "anime_id", "type": "VARCHAR(100)", "fk": {"table": "animes", "field": "id", "on_delete": "CASCADE"}, "comment": "条目ID"},
+        {"field": "subscribed_at", "type": "TIMESTAMPTZ", "default": "CURRENT_TIMESTAMP", "comment": "订阅时间"}
+      ],
+      "indexes": [
+        {"name": "uq_user_anime", "fields": ["user_id", "anime_id"], "unique": true},
+        {"name": "idx_user_anime_subs_user", "fields": ["user_id"]}
+      ]
+    },
+    {
+      "table_name": "anime_reminders",
+      "comment": "催更记录表 - 用户催更获取最新链接的记录",
+      "fields": [
+        {"field": "id", "type": "BIGSERIAL", "pk": true, "comment": "催更ID (主键)"},
+        {"field": "user_id", "type": "UUID", "fk": {"table": "users", "field": "id", "on_delete": "CASCADE"}, "comment": "用户ID"},
+        {"field": "anime_id", "type": "VARCHAR(100)", "fk": {"table": "animes", "field": "id", "on_delete": "CASCADE"}, "comment": "条目ID"},
+        {"field": "is_reminded", "type": "BOOLEAN", "default": false, "comment": "是否已催更过"},
+        {"field": "reminded_at", "type": "TIMESTAMPTZ", "nullable": true, "comment": "最后催更时间"},
+        {"field": "current_episode", "type": "VARCHAR(100)", "nullable": true, "comment": "催更时的当前集数"},
+        {"field": "created_at", "type": "TIMESTAMPTZ", "default": "CURRENT_TIMESTAMP", "comment": "创建时间"}
+      ],
+      "indexes": [
+        {"name": "uq_user_anime_reminder", "fields": ["user_id", "anime_id"], "unique": true},
+        {"name": "idx_anime_reminders_user", "fields": ["user_id"]}
+      ]
+    },
+    {
+      "table_name": "push_logs",
+      "comment": "推送日志表 - 微信订阅消息推送记录",
+      "fields": [
+        {"field": "id", "type": "BIGSERIAL", "pk": true, "comment": "日志ID (主键)"},
+        {"field": "user_id", "type": "UUID", "fk": {"table": "users", "field": "id", "on_delete": "CASCADE"}, "comment": "目标用户ID"},
+        {"field": "template_id", "type": "VARCHAR(50)", "nullable": false, "comment": "推送模板标识 (如 anime_update)"},
+        {"field": "content", "type": "TEXT", "nullable": false, "comment": "推送内容 (JSON格式)"},
+        {"field": "channel", "type": "VARCHAR(20)", "nullable": false, "comment": "推送渠道: subscribe=微信订阅消息"},
+        {"field": "wechat_data", "type": "TEXT", "nullable": true, "comment": "微信订阅消息的模板数据 (JSON)"},
+        {"field": "status", "type": "SMALLINT", "default": 0, "comment": "状态: 0=待发送/1=已发送/2=发送失败"},
+        {"field": "created_at", "type": "TIMESTAMPTZ", "default": "CURRENT_TIMESTAMP", "comment": "创建时间"},
+        {"field": "sent_at", "type": "TIMESTAMPTZ", "nullable": true, "comment": "发送时间"}
+      ],
+      "indexes": [
+        {"name": "idx_push_logs_user_status", "fields": ["user_id", "status"]},
+        {"name": "idx_push_logs_created_at", "fields": ["created_at"]}
+      ]
+    },
+    {
+      "table_name": "config_unlock",
+      "comment": "解锁阈值配置表 - 各功能需要邀请人数的阈值配置。邀请人数达标后，对应功能自动解锁",
+      "fields": [
+        {"field": "id", "type": "BIGSERIAL", "pk": true, "comment": "配置ID (主键)"},
+        {"field": "threshold", "type": "INTEGER", "nullable": false, "comment": "需要邀请人数阈值"},
+        {"field": "feature_key", "type": "VARCHAR(30)", "nullable": false, "unique": true, "comment": "功能标识 (唯一)"},
+        {"field": "feature_name", "type": "VARCHAR(50)", "nullable": false, "comment": "功能显示名称"}
+      ],
+      "feature_key_mapping": {
+        "sleep": {"threshold": 1, "name": "睡眠记录"},
+        "water": {"threshold": 3, "name": "喝水提醒"},
+        "anime_remind": {"threshold": 8, "name": "追番提醒"},
+        "anime_preview": {"threshold": 15, "name": "追番预告"},
+        "anime_drive": {"threshold": 3, "name": "网盘资源（影视剧百度/夸克链接）"}
+      },
+      "indexes": [
+        {"name": "idx_config_unlock_feature_key", "fields": ["feature_key"], "unique": true},
+        {"name": "idx_config_unlock_threshold", "fields": ["threshold"]}
+      ]
+    },
+    {
+      "table_name": "config_push_templates",
+      "comment": "推送模板配置表 - 各渠道推送模板映射",
+      "fields": [
+        {"field": "id", "type": "BIGSERIAL", "pk": true, "comment": "配置ID (主键)"},
+        {"field": "template_id", "type": "VARCHAR(50)", "nullable": false, "unique": true, "comment": "推送模板标识 (如 anime_update)"},
+        {"field": "title", "type": "VARCHAR(100)", "nullable": false, "comment": "推送标题"},
+        {"field": "content", "type": "TEXT", "nullable": false, "comment": "推送内容模板 (含占位符)"},
+        {"field": "channel", "type": "VARCHAR(20)", "nullable": false, "comment": "推送渠道: subscribe"},
+        {"field": "wechat_template_id", "type": "VARCHAR(100)", "nullable": true, "comment": "微信小程序订阅消息模板ID"},
+        {"field": "wechat_keywords", "type": "TEXT", "nullable": true, "comment": "微信模板关键字映射 (JSON)"}
+      ],
+      "indexes": [
+        {"name": "idx_config_push_templates_template_id", "fields": ["template_id"], "unique": true}
+      ]
+    },
+    {
+      "table_name": "ad_config",
+      "comment": "广告配置表 - 小程序广告位配置 (激励视频/Banner/卡片广告)，支持A/B测试和远程切换广告ID",
+      "fields": [
+        {"field": "id", "type": "BIGSERIAL", "pk": true, "comment": "配置ID (主键)"},
+        {"field": "ad_type", "type": "VARCHAR(50)", "unique": true, "comment": "广告类型: rewarded_video/banner/custom_ad"},
+        {"field": "enabled", "type": "BOOLEAN", "default": false, "comment": "是否启用（关闭时前端不展示该广告位）"},
+        {"field": "unit_id", "type": "VARCHAR(200)", "nullable": true, "comment": "正式微信广告单元ID"},
+        {"field": "test_unit_id", "type": "VARCHAR(200)", "nullable": true, "comment": "A/B测试用备选广告单元ID"},
+        {"field": "position", "type": "VARCHAR(50)", "nullable": true, "comment": "展示位置: bottom/list/全屏"},
+        {"field": "sort_order", "type": "INTEGER", "default": 0, "nullable": true, "comment": "广告插入间隔 (custom_ad类型每隔N条插入，默认3)"},
+        {"field": "description", "type": "TEXT", "nullable": true, "comment": "广告描述"},
+        {"field": "ab_test_enabled", "type": "BOOLEAN", "default": false, "comment": "是否启用A/B测试"},
+        {"field": "ab_test_ratio", "type": "FLOAT", "default": 0.5, "comment": "A/B测试流量比例 (0.0~1.0)"},
+        {"field": "created_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "comment": "创建时间"},
+        {"field": "updated_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "comment": "更新时间"}
+      ]
+    },
+    {
+      "table_name": "marquee_config",
+      "comment": "跑马灯配置表 - 首页公告跑马灯配置",
+      "fields": [
+        {"field": "id", "type": "BIGSERIAL", "pk": true, "comment": "配置ID (主键)"},
+        {"field": "enabled", "type": "BOOLEAN", "default": true, "comment": "是否显示跑马灯"},
+        {"field": "content", "type": "VARCHAR(500)", "nullable": true, "comment": "跑马灯文案 (含 {target}/{current}/{remaining} 占位符)"},
+        {"field": "link_url", "type": "VARCHAR(500)", "nullable": true, "comment": "点击跳转链接"},
+        {"field": "created_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "comment": "创建时间"},
+        {"field": "updated_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "comment": "更新时间"}
+      ]
+    },
+    {
+      "table_name": "feedback",
+      "comment": "用户反馈表 - 用户提交的反馈和建议",
+      "fields": [
+        {"field": "id", "type": "BIGSERIAL", "pk": true, "comment": "反馈ID (主键)"},
+        {"field": "user_id", "type": "VARCHAR(100)", "nullable": false, "comment": "用户ID"},
+        {"field": "type", "type": "VARCHAR(50)", "nullable": false, "comment": "反馈类型: feedback=普通反馈"},
+        {"field": "content", "type": "TEXT", "nullable": false, "comment": "反馈内容"},
+        {"field": "screenshots", "type": "TEXT", "nullable": true, "comment": "截图URL列表 (JSON数组格式)"},
+        {"field": "contact", "type": "VARCHAR(200)", "nullable": true, "comment": "联系方式 (如平台标识)"},
+        {"field": "created_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "comment": "创建时间"}
+      ]
+    },
+    {
+      "table_name": "banners",
+      "comment": "Banner管理表 - 首页Banner轮播图配置",
+      "fields": [
+        {"field": "id", "type": "BIGSERIAL", "pk": true, "comment": "Banner ID (主键)"},
+        {"field": "title", "type": "VARCHAR(200)", "nullable": false, "comment": "Banner标题"},
+        {"field": "image_url", "type": "VARCHAR(500)", "nullable": false, "comment": "Banner图片URL"},
+        {"field": "link_url", "type": "VARCHAR(500)", "nullable": true, "comment": "点击跳转链接"},
+        {"field": "sort_order", "type": "INTEGER", "default": 0, "comment": "排序权重 (数值越小越靠前)"},
+        {"field": "status", "type": "VARCHAR(20)", "default": "'active'", "comment": "状态: active=上线/inactive=下线"},
+        {"field": "created_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "comment": "创建时间"},
+        {"field": "updated_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "comment": "更新时间"}
+      ]
+    },
+    {
+      "table_name": "kdocs_sources",
+      "comment": "KDocs数据源配置表 - 金山文档数据抓取源（每个源独立配置URL/类型/定时cron）",
+      "fields": [
+        {"field": "id", "type": "BIGSERIAL", "pk": true, "comment": "数据源ID (主键)"},
+        {"field": "name", "type": "VARCHAR(100)", "nullable": false, "comment": "数据源名称 (如 影视剧/电影/4K资源)"},
+        {"field": "url", "type": "VARCHAR(500)", "nullable": false, "comment": "金山文档URL"},
+        {"field": "type", "type": "VARCHAR(50)", "nullable": false, "comment": "数据映射类型: anime/movie/anime_4k"},
+        {"field": "enabled", "type": "BOOLEAN", "default": true, "comment": "是否启用定时抓取"},
+        {"field": "cron_expression", "type": "VARCHAR(100)", "default": "'*/15 * * * *'", "comment": "该数据源独立的定时同步cron表达式（番剧每15分钟/电影每天2点/4K每天3点）"},
+        {"field": "last_sync_at", "type": "TIMESTAMP", "nullable": true, "comment": "最后同步时间"},
+        {"field": "last_sync_result", "type": "VARCHAR(200)", "nullable": true, "comment": "最后同步结果"},
+        {"field": "created_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "comment": "创建时间"},
+        {"field": "updated_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "comment": "更新时间"}
+      ]
+    },
+    {
+      "table_name": "mine_apps",
+      "comment": "Mine页小程序管理表 - '我的'页面底部推荐小程序列表",
+      "fields": [
+        {"field": "id", "type": "BIGSERIAL", "pk": true, "comment": "小程序ID (主键)"},
+        {"field": "name", "type": "VARCHAR(100)", "nullable": false, "comment": "小程序显示名称"},
+        {"field": "app_id", "type": "VARCHAR(100)", "nullable": false, "comment": "微信小程序AppID"},
+        {"field": "path", "type": "VARCHAR(200)", "nullable": true, "comment": "跳转路径 (默认 /pages/index)"},
+        {"field": "icon", "type": "VARCHAR(200)", "nullable": true, "comment": "图标 (emoji或图片URL)"},
+        {"field": "sort_order", "type": "INTEGER", "default": 0, "comment": "排序顺序"},
+        {"field": "enabled", "type": "BOOLEAN", "default": true, "comment": "是否启用展示"},
+        {"field": "created_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "comment": "创建时间"},
+        {"field": "updated_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "comment": "更新时间"}
+      ],
+      "indexes": [
+        {"name": "idx_mine_apps_sort", "fields": ["sort_order"]}
+      ]
+    },
+    {
+      "table_name": "reserve_config",
+      "comment": "预留配置表 - Mine页预留区域配置 (公众号二维码等)",
+      "fields": [
+        {"field": "id", "type": "BIGSERIAL", "pk": true, "comment": "配置ID (主键)"},
+        {"field": "config_type", "type": "VARCHAR(50)", "unique": true, "comment": "配置类型: official_account=公众号配置"},
+        {"field": "config_data", "type": "TEXT", "nullable": false, "comment": "配置数据 (JSON格式, 包含enabled/name/qrcode_url等)"},
+        {"field": "created_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "comment": "创建时间"},
+        {"field": "updated_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "comment": "更新时间"}
+      ]
+    },
+    {
+      "table_name": "ad_stats",
+      "comment": "广告统计数据表 - 广告曝光/点击/收益记录",
+      "fields": [
+        {"field": "id", "type": "BIGSERIAL", "pk": true, "comment": "统计ID (主键)"},
+        {"field": "position", "type": "VARCHAR(50)", "nullable": false, "comment": "广告位标识"},
+        {"field": "user_id", "type": "UUID", "nullable": true, "comment": "用户ID (可为空)"},
+        {"field": "action", "type": "VARCHAR(20)", "nullable": false, "comment": "行为: show=曝光/click=点击"},
+        {"field": "estimated_revenue", "type": "FLOAT", "default": 0.0, "comment": "预估收益"},
+        {"field": "stats_date", "type": "VARCHAR(10)", "nullable": false, "comment": "统计日期 (yyyy-mm-dd)"},
+        {"field": "created_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "comment": "创建时间"}
+      ],
+      "indexes": [
+        {"name": "idx_ad_stats_date", "fields": ["position", "stats_date"]}
+      ]
+    },
+    {
+      "table_name": "system_config",
+      "comment": "系统配置表 - 全局系统级配置 (key-value键值对，如推送开关、全局参数等)",
+      "fields": [
+        {"field": "id", "type": "BIGSERIAL", "pk": true, "comment": "配置ID (主键)"},
+        {"field": "config_key", "type": "VARCHAR(100)", "nullable": false, "unique": true, "comment": "配置键 (如 push_enabled/max_invite等)"},
+        {"field": "config_value", "type": "TEXT", "nullable": false, "comment": "配置值 (字符串/JSON)"},
+        {"field": "description", "type": "VARCHAR(200)", "nullable": true, "comment": "配置说明"},
+        {"field": "updated_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "comment": "更新时间"}
+      ],
+      "indexes": [
+        {"name": "idx_system_config_key", "fields": ["config_key"], "unique": true}
+      ]
+    },
+    {
+      "table_name": "mine_sections",
+      "comment": "Mine页板块配置表 - '我的'页面各板块的标题和开关配置",
+      "fields": [
+        {"field": "id", "type": "BIGSERIAL", "pk": true, "comment": "板块ID (主键)"},
+        {"field": "section_key", "type": "VARCHAR(50)", "nullable": false, "unique": true, "comment": "板块标识: official_account/mini_programs"},
+        {"field": "title", "type": "VARCHAR(100)", "nullable": false, "comment": "板块显示标题 (如'关注公众号'/'更多优秀小程序')"},
+        {"field": "enabled", "type": "BOOLEAN", "default": true, "comment": "是否启用此板块"},
+        {"field": "sort_order", "type": "INTEGER", "default": 0, "comment": "排序顺序"},
+        {"field": "description", "type": "VARCHAR(200)", "nullable": true, "comment": "板块说明"},
+        {"field": "created_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "comment": "创建时间"},
+        {"field": "updated_at", "type": "TIMESTAMP", "default": "CURRENT_TIMESTAMP", "comment": "更新时间"}
+      ],
+      "indexes": [
+        {"name": "idx_mine_sections_sort", "fields": ["sort_order"]},
+        {"name": "idx_mine_sections_key", "fields": ["section_key"], "unique": true}
+      ]
+    }
+  ]
+}

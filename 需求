@@ -1,0 +1,523 @@
+一、当前接口对照表已有 vs 需要新增
+已有接口（无需新增）
+模块	接口	状态
+用户	/api/user/login、/api/user/info	✅ 已有
+记录	/api/record/create、/api/calendar、/api/today/status	✅ 已有
+邀请	/api/invite/progress、/api/rank/list	✅ 已有
+追番	/api/anime/library、/api/anime/subscribe	✅ 已有
+徽章	/api/badge/list、/api/badge/detail	✅ 已有
+海报	/api/poster/templates、/api/poster/generate	✅ 已有
+需要新增/补充的接口
+根据你的新需求，以下接口需要新增：
+
+优先级	模块	接口	说明
+P0	用户管理	GET /api/admin/users	用户列表（分页、搜索）
+P0	用户管理	PUT /api/admin/users/{id}/invite-count	修改用户邀请人数
+P0	用户管理	POST /api/admin/users/{id}/release-invite	释放邀请登记（手动触发解锁）
+P0	数据看板	GET /api/admin/stats/overview	总用户数、今日新增、总记录数等
+P0	数据看板	GET /api/admin/stats/trend	用户增长趋势（近7/30天）
+P1	广告配置	GET /api/admin/ads	获取广告配置（三种广告）
+P1	广告配置	PUT /api/admin/ads	更新广告配置
+P1	广告统计	GET /api/admin/ads/stats	广告点击/收益统计
+P1	广告统计	GET /api/admin/ads/user-contribution	每个用户贡献收益
+P1	跑马灯	GET /api/admin/marquee	获取跑马灯配置
+P1	跑马灯	PUT /api/admin/marquee	更新跑马灯配置
+P1	Banner	GET /api/admin/banners	获取 Banner 列表
+P1	Banner	POST /api/admin/banners	创建 Banner
+P1	Banner	PUT /api/admin/banners/{id}	更新 Banner
+P1	Banner	DELETE /api/admin/banners/{id}	删除 Banner
+P1	Banner	POST /api/admin/banners/{id}/toggle	上线/下线 Banner
+P2	系统配置	GET /api/admin/config/unlock	功能解锁阈值
+P2	系统配置	PUT /api/admin/config/unlock	更新解锁阈值
+P2	预留配置	GET /api/admin/reserve	获取预留配置（公众号、小程序）
+P2	预留配置	PUT /api/admin/reserve	更新预留配置
+P2	数据源配置	GET /api/admin/kdocs/sources	获取数据源列表
+P2	数据源配置	POST /api/admin/kdocs/sources	新增数据源 URL
+P2	数据源配置	PUT /api/admin/kdocs/sources/{id}	修改数据源 URL
+P2	数据源配置	DELETE /api/admin/kdocs/sources/{id}	删除数据源 URL
+P2	监听规则	GET /api/admin/kdocs/rules	获取监听规则（频率等）
+P2	监听规则	PUT /api/admin/kdocs/rules	更新监听规则
+P2	小程序管理	GET /api/admin/mine-apps	获取 Mine 页小程序列表
+P2	小程序管理	POST /api/admin/mine-apps	新增小程序入口
+P2	小程序管理	PUT /api/admin/mine-apps/{id}	修改小程序入口
+P2	小程序管理	DELETE /api/admin/mine-apps/{id}	删除小程序入口
+P2	小程序管理	PUT /api/admin/mine-apps/sort	调整排序
+二、详细接口定义（需要新增的部分）
+1. 用户管理
+1.1 获取用户列表
+GET /api/admin/users
+
+查询参数：
+
+参数	类型	必填	说明
+page	int	否	页码，默认1
+page_size	int	否	每页数量，默认20
+keyword	string	否	搜索关键词（用户ID/昵称）
+status	string	否	active/inactive/churned
+响应：
+
+json
+{
+  "code": 0,
+  "data": {
+    "total": 100,
+    "list": [
+      {
+        "user_id": "xxx",
+        "nickname": "小可爱",
+        "avatar": "https://...",
+        "invite_count": 5,
+        "continuous_days": 12,
+        "unlocked_features": ["poop", "period", "sleep"],
+        "status": "active",
+        "created_at": "2026-05-01 10:00:00"
+      }
+    ]
+  }
+}
+1.2 修改用户邀请人数
+PUT /api/admin/users/{user_id}/invite-count
+
+请求体：
+
+json
+{
+  "invite_count": 10
+}
+响应：
+
+json
+{
+  "code": 0,
+  "message": "success"
+}
+1.3 释放邀请登记（手动解锁功能）
+POST /api/admin/users/{user_id}/release-invite
+
+请求体：
+
+json
+{
+  "feature_key": "sleep"  // 要解锁的功能
+}
+响应：
+
+json
+{
+  "code": 0,
+  "message": "success"
+}
+2. 数据看板
+2.1 获取概览数据
+GET /api/admin/stats/overview
+
+响应：
+
+json
+{
+  "code": 0,
+  "data": {
+    "total_users": 2841,
+    "today_new_users": 47,
+    "total_records": 18492,
+    "today_records": 312,
+    "total_invites": 4213,
+    "today_invites": 89
+  }
+}
+2.2 获取用户增长趋势
+GET /api/admin/stats/trend
+
+查询参数：
+
+参数	类型	必填	说明
+days	int	否	7/30/365，默认7
+响应：
+
+json
+{
+  "code": 0,
+  "data": {
+    "labels": ["5/18", "5/19", "5/20", "5/21", "5/22", "5/23", "5/24"],
+    "values": [32, 28, 45, 38, 52, 41, 47]
+  }
+}
+3. 广告配置
+3.1 获取广告配置
+GET /api/admin/ads
+
+响应：
+
+json
+{
+  "code": 0,
+  "data": {
+    "rewarded_video": {
+      "enabled": false,
+      "unit_id": "",
+      "test_unit_id": "",      // A/B测试用
+      "description": "用户点击复制链接时播放"
+    },
+    "banner": {
+      "enabled": false,
+      "unit_id": "",
+      "test_unit_id": "",
+      "position": "bottom",
+      "description": "首页底部Banner"
+    },
+    "custom_ad": {
+      "enabled": false,
+      "unit_id": "",
+      "test_unit_id": "",
+      "insert_interval": 3,     // 每隔3条插入
+      "description": "番剧列表中插入卡片广告"
+    },
+    "ab_test": {
+      "enabled": false,
+      "test_ratio": 0.5         // 50%用户看到测试广告
+    }
+  }
+}
+3.2 更新广告配置
+PUT /api/admin/ads
+
+请求体：同上结构，支持部分更新
+
+3.3 获取广告统计（收益）
+GET /api/admin/ads/stats
+
+查询参数：
+
+参数	类型	必填	说明
+start_date	string	否	开始日期
+end_date	string	否	结束日期
+响应：
+
+json
+{
+  "code": 0,
+  "data": {
+    "rewarded_video": {
+      "show_count": 1230,
+      "click_count": 890,
+      "estimated_revenue": 89.50
+    },
+    "banner": {
+      "show_count": 5000,
+      "click_count": 120,
+      "estimated_revenue": 12.00
+    },
+    "custom_ad": {
+      "show_count": 3000,
+      "click_count": 200,
+      "estimated_revenue": 25.00
+    },
+    "total_revenue": 126.50
+  }
+}
+3.4 获取每个用户贡献收益
+GET /api/admin/ads/user-contribution
+
+查询参数：
+
+参数	类型	必填	说明
+page	int	否	页码
+page_size	int	否	每页数量
+响应：
+
+json
+{
+  "code": 0,
+  "data": {
+    "list": [
+      {
+        "user_id": "xxx",
+        "nickname": "小可爱",
+        "rewarded_video_views": 5,
+        "banner_clicks": 2,
+        "custom_ad_clicks": 1,
+        "estimated_revenue": 0.85
+      }
+    ],
+    "total": 100
+  }
+}
+4. 跑马灯配置
+4.1 获取跑马灯配置
+GET /api/admin/marquee
+
+响应：
+
+json
+{
+  "code": 0,
+  "data": {
+    "enabled": true,
+    "target": 5,
+    "text_template": "🎁 邀请{target}位好友，解锁网盘资源！当前进度：{current}/{target}",
+    "interval": 5000
+  }
+}
+4.2 更新跑马灯配置
+PUT /api/admin/marquee
+
+请求体：
+
+json
+{
+  "enabled": true,
+  "target": 10,
+  "text_template": "自定义文案",
+  "interval": 5000
+}
+5. Banner 管理
+5.1 获取 Banner 列表
+GET /api/admin/banners
+
+响应：
+
+json
+{
+  "code": 0,
+  "data": {
+    "list": [
+      {
+        "id": 1,
+        "title": "邀请活动",
+        "image_url": "https://...",
+        "link_url": "/pages/invite/index",
+        "sort_order": 1,
+        "status": "active",
+        "created_at": "2026-05-01"
+      }
+    ]
+  }
+}
+5.2 创建 Banner
+POST /api/admin/banners
+
+请求体：
+
+json
+{
+  "title": "邀请活动",
+  "image_url": "https://...",
+  "link_url": "/pages/invite/index",
+  "sort_order": 1,
+  "status": "active"
+}
+5.3 更新 Banner
+PUT /api/admin/banners/{id}
+
+5.4 删除 Banner
+DELETE /api/admin/banners/{id}
+
+5.5 上线/下线 Banner
+POST /api/admin/banners/{id}/toggle
+
+请求体：
+
+json
+{
+  "status": "active"  // 或 "inactive"
+}
+6. 系统配置
+6.1 获取解锁阈值
+GET /api/admin/config/unlock
+
+响应：
+
+json
+{
+  "code": 0,
+  "data": {
+    "sleep": 1,
+    "water": 3,
+    "anime_remind": 8,
+    "anime_preview": 15,
+    "drive": 30
+  }
+}
+6.2 更新解锁阈值
+PUT /api/admin/config/unlock
+
+请求体：
+
+json
+{
+  "sleep": 2,
+  "water": 5,
+  "anime_remind": 10,
+  "anime_preview": 20,
+  "drive": 50
+}
+7. 预留配置
+7.1 获取预留配置
+GET /api/admin/reserve
+
+响应：
+
+json
+{
+  "code": 0,
+  "data": {
+    "mini_programs": [
+      {
+        "id": 1,
+        "name": "影视推荐",
+        "app_id": "wx1234567890",
+        "path": "/pages/index",
+        "icon": "🎬",
+        "sort_order": 1,
+        "enabled": true
+      }
+    ],
+    "official_account": {
+      "enabled": true,
+      "name": "健康生活助手",
+      "qrcode_url": "https://..."
+    }
+  }
+}
+7.2 更新预留配置
+PUT /api/admin/reserve
+
+请求体：同上结构
+
+8. 数据源配置（金山文档监听）
+8.1 获取数据源列表
+GET /api/admin/kdocs/sources
+
+响应：
+
+json
+{
+  "code": 0,
+  "data": {
+    "list": [
+      {
+        "id": 1,
+        "name": "影视剧",
+        "url": "https://www.kdocs.cn/l/co72a28MWkmI",
+        "type": "anime",
+        "enabled": true,
+        "last_sync_at": "2026-05-25 02:00:00"
+      },
+      {
+        "id": 2,
+        "name": "电影",
+        "url": "https://www.kdocs.cn/l/cmbapmIwVsfi",
+        "type": "movie",
+        "enabled": true
+      },
+      {
+        "id": 3,
+        "name": "4K资源",
+        "url": "https://www.kdocs.cn/l/cdv0WUisFk3x",
+        "type": "anime_4k",
+        "enabled": true
+      }
+    ]
+  }
+}
+8.2 新增数据源
+POST /api/admin/kdocs/sources
+
+请求体：
+
+json
+{
+  "name": "新数据源",
+  "url": "https://www.kdocs.cn/l/xxxxx",
+  "type": "anime",
+  "enabled": true
+}
+8.3 修改数据源
+PUT /api/admin/kdocs/sources/{id}
+
+请求体：
+
+json
+{
+  "url": "https://www.kdocs.cn/l/newurl",
+  "enabled": true
+}
+8.4 删除数据源
+DELETE /api/admin/kdocs/sources/{id}
+
+8.5 获取监听规则
+GET /api/admin/kdocs/rules
+
+响应：
+
+json
+{
+  "code": 0,
+  "data": {
+    "cron_expression": "0 2,14 * * *",
+    "enabled": true,
+    "last_run_at": "2026-05-25 14:00:00"
+  }
+}
+8.6 更新监听规则
+PUT /api/admin/kdocs/rules
+
+请求体：
+
+json
+{
+  "cron_expression": "0 */30 * * * *",  // 每30分钟
+  "enabled": true
+}
+9. Mine 页小程序管理
+9.1 获取小程序列表
+GET /api/admin/mine-apps
+
+响应：
+
+json
+{
+  "code": 0,
+  "data": {
+    "list": [
+      {
+        "id": 1,
+        "name": "追番神器",
+        "app_id": "wx_anime_tracker",
+        "path": "/pages/index",
+        "icon": "🎌",
+        "sort_order": 1,
+        "enabled": true
+      }
+    ]
+  }
+}
+9.2 新增小程序入口
+POST /api/admin/mine-apps
+
+请求体：
+
+json
+{
+  "name": "健康打卡",
+  "app_id": "wx_health_diary",
+  "path": "/pages/index",
+  "icon": "💪",
+  "sort_order": 2,
+  "enabled": true
+}
+9.3 修改小程序入口
+PUT /api/admin/mine-apps/{id}
+
+9.4 删除小程序入口
+DELETE /api/admin/mine-apps/{id}
+
+9.5 调整排序
+PUT /api/admin/mine-apps/sort
+
+请求体：
+
+json
+{
+  "ids": [2, 1, 3]  // 按顺序排列的ID列表
+}

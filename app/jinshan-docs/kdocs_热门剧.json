@@ -1,0 +1,85 @@
+{
+  "meta": {
+    "source": "金山文档 (kdocs.cn)",
+    "url": "https://www.kdocs.cn/l/co72a28MWkmI",
+    "title": "热门剧",
+    "fetch_time": "2026-05-23",
+    "update_date": "2026-05-22",
+    "update_time": "00:05",
+    "update_note": "文档章节标题为 2026.5.22（热门更新），编辑者显示 今天 00:05更新",
+    "editor": "小丸子4K"
+  },
+  "instructions": {
+    "search_method": "右上角登录 >> 右上角三个横线 >> 查找和替换 >> 输入关键字 >> 点击搜索（搜不到就是暂无资源）",
+    "notice": [
+      "先转存 ⇨ 再观看 ⇨ 避失效 ⇨ 耽误看 ⇨ 文件 ⇨ 补档慢",
+      "夸克和谐严重，尽量使用百度",
+      "夸克缺集数就是和谐了"
+    ],
+    "solution_steps": [
+      "①复制网盘链接 ⇨",
+      "②打开网盘APP ⇨",
+      "③自动弹出文件夹 ⇨",
+      "④点击转存 ⇨",
+      "⑤回到自己网盘中播放"
+    ]
+  },
+  "entries": [
+    {
+      "index": 1,
+      "title": "良陈美锦",
+      "quality": "1080P",
+      "episode": "更 40",
+      "status": "超前完结",
+      "fetch_time": "2026-05-23",
+      "update_date": "2026-05-22",
+      "update_time": "00:05",
+      "links": {
+        "baidu": {
+          "url": "https://pan.baidu.com/s/1ZxOTd0VtCpDIJwbHcBn_Sw",
+          "password": "1120"
+        },
+        "quark": "https://pan.quark.cn/s/18ada21fca9e",
+        "4k": "热剧【4K⁺】清晰度专用文档(NEW)"
+      }
+    },
+    {
+      "index": 2,
+      "title": "主角",
+      "quality": "1080P",
+      "episode": "更 27",
+      "status": null,
+      "fetch_time": "2026-05-23",
+      "update_date": "2026-05-22",
+      "update_time": "00:05",
+      "links": {
+        "baidu": {
+          "url": "https://pan.baidu.com/s/1u7xsrtn7EQGShKsIjkR6lg",
+          "password": "1120"
+        },
+        "quark": "https://pan.quark.cn/s/10a6450bb381",
+        "4k": "热剧【4K⁺】清晰度专用文档(NEW)"
+      }
+    },
+    {
+      "index": 3,
+      "title": "家业",
+      "quality": "1080P",
+      "episode": "更 14",
+      "status": null,
+      "fetch_time": "2026-05-23",
+      "update_date": "2026-05-22",
+      "update_time": "00:05",
+      "links": {
+        "baidu": {
+          "url": "https://pan.baidu.com/s/1b_FGdz6TJzfuRSX3EywqGQ",
+          "password": "1120"
+        },
+        "quark": "https://pan.quark.cn/s/d97b498fa9c2",
+        "4k": "热剧【4K⁺】清晰度专用文档(NEW)"
+      }
+    }
+  ],
+  "total_entries": 3,
+  "total_text_items": 27
+}

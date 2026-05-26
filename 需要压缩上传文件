@@ -1,0 +1,69 @@
+# ============================================================
+# 服务器部署指南
+# ============================================================
+# 方式一（推荐）：git clone + 手动补 .env
+# 方式二：全部打包 zip 上传（不需要 git）
+# ============================================================
+
+
+🚀  方式一：git clone（推荐）
+
+# 代码从仓库拉，不需要打包上传
+git clone <你的仓库地址> /opt/girl-backend
+cd /opt/girl-backend
+
+# ⚠️ 唯一需要手动创建的文件：.env（绝不能进 git）
+# 内容按照下方模板填写后 scp 到服务器，或者直接在服务器上 vim .env
+docker compose up -d --build
+
+
+📦 方式二：全部打包上传（不需要 git 的服务器）
+
+# 本地打包
+Compress-Archive -Path @(
+  "Dockerfile",
+  "docker-compose.yml",
+  ".dockerignore",
+  "pyproject.toml",
+  "uv.lock",
+  "app"
+) -DestinationPath "backend-girl-deploy.zip"
+
+# scp 上传后
+unzip backend-girl-deploy.zip -d /opt/girl-backend
+cd /opt/girl-backend
+# 同样需要手动创建 .env
+docker compose up -d --build
+
+
+📝 .env 模板（两种方式都需要手动创建）：
+
+------------------------------
+ENV=production
+POSTGRES_PASSWORD=<强密码，不要用默认的 w12345>
+JWT_SECRET_KEY=<随机32位字符串>
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=10080
+CORS_ORIGINS=*
+WECHAT_APP_ID=wx08de926a1de78b19
+WECHAT_APP_SECRET=<小程序 AppSecret>
+WECHAT_LOGIN_URL=https://api.weixin.qq.com/sns/jscode2session
+------------------------------
+
+
+🔒 文件归属对照：
+
+  进 git 仓库            不进 git（手动上传/创建）
+  ─────────────────────  ──────────────────────────
+  Dockerfile             .env          ← 含密码
+  docker-compose.yml
+  .dockerignore
+  pyproject.toml
+  uv.lock
+  app/（全部源码）
+
+
+✅ 启动后验证：
+
+  curl http://localhost:8000/health
+  # 返回 {"status":"ok","env":"production"} 即成功

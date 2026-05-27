@@ -8,8 +8,8 @@ import asyncio
 import logging
 from datetime import datetime
 
-from app.services.kdocs_fetcher import fetch_single_source_from_db
-from app.services.kdocs_sync_service import sync_anime_data
+from app.services.kdocs_fetcher import fetch_all_sources, fetch_single_source_from_db
+from app.services.kdocs_sync_service import sync_all, sync_anime_data
 
 logger = logging.getLogger(__name__)
 
@@ -40,15 +40,10 @@ async def sync_all_kdocs_sources():
     logger.info(f"KDocs 全量同步开始: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info("=" * 60)
 
-    from app.database import async_session
-    from app.models.admin_models import KDocsSource
-    from sqlalchemy import select
-
-    async with async_session() as db:
-        result = await db.execute(select(KDocsSource).where(KDocsSource.enabled == True))
-        sources = result.scalars().all()
-
-    for src in sources:
-        await sync_kdocs_source(src.id, src.type)
+    entries_by_type = await fetch_all_sources()
+    if entries_by_type:
+        await sync_all(entries_by_type)
+    else:
+        logger.warning("KDocs 全量同步没有抓取到任何数据")
 
     logger.info(f"KDocs 全量同步完成")

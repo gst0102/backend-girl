@@ -19,8 +19,13 @@ RESULT_DIR = Path(__file__).parent.parent.parent / "date"
 RESULT_DIR.mkdir(parents=True, exist_ok=True)
 
 KDOCS_PAGE_WAIT_SECONDS = float(os.getenv("KDOCS_PAGE_WAIT_SECONDS", "3"))
-KDOCS_SCROLL_WAIT_SECONDS = float(os.getenv("KDOCS_SCROLL_WAIT_SECONDS", "0.6"))
-KDOCS_SCROLL_STEP = int(os.getenv("KDOCS_SCROLL_STEP", "7000"))
+KDOCS_NETWORK_WAIT_SECONDS = float(os.getenv("KDOCS_NETWORK_WAIT_SECONDS", "8"))
+KDOCS_EDITOR_WAIT_SECONDS = float(os.getenv("KDOCS_EDITOR_WAIT_SECONDS", "20"))
+KDOCS_SCROLL_WAIT_SECONDS = float(os.getenv("KDOCS_SCROLL_WAIT_SECONDS", "1.2"))
+KDOCS_SCROLL_STEP = int(os.getenv("KDOCS_SCROLL_STEP", "1200"))
+KDOCS_STABLE_ROUNDS = int(os.getenv("KDOCS_STABLE_ROUNDS", "3"))
+KDOCS_STABLE_WAIT_SECONDS = float(os.getenv("KDOCS_STABLE_WAIT_SECONDS", "0.8"))
+KDOCS_MAX_ENTRIES = int(os.getenv("KDOCS_MAX_ENTRIES", "20"))
 
 
 def _create_headless_browser():
@@ -42,7 +47,9 @@ def _create_headless_browser():
     co.set_argument("--disable-popup-blocking")
     co.set_argument("--hide-scrollbars")
     co.set_argument("--mute-audio")
-    co.set_argument("--blink-settings=imagesEnabled=false")
+    co.set_argument("--window-size=1920,2400")
+    if os.getenv("KDOCS_DISABLE_IMAGES", "0").lower() in {"1", "true", "yes"}:
+        co.set_argument("--blink-settings=imagesEnabled=false")
     browser = Chromium(co)
     browser.set.timeouts(base=10, page_load=25, script=10)
     browser.set.retry_times(1)
@@ -60,6 +67,8 @@ def _extract_all_content(tab):
     except Exception:
         pass
     tab.wait(1.5)
+    _wait_network_idle(tab)
+    _wait_text_stable(tab)
 
     scroll_h = tab.run_js(
         "var c=document.querySelector('.otl-scroll-container'); return c ? c.scrollHeight : document.body.scrollHeight;"
@@ -76,11 +85,244 @@ def _extract_all_content(tab):
         for pos in positions:
             js = f"var c=document.querySelector('.otl-scroll-container'); if(c) c.scrollTop={pos};"
             tab.run_js(js)
+            _wait_network_idle(tab, timeout=KDOCS_SCROLL_WAIT_SECONDS)
+            _wait_text_stable(tab, rounds=2)
             tab.wait(KDOCS_SCROLL_WAIT_SECONDS)
             parts.append(tab('t:body').text)
     else:
         parts.append(tab('t:body').text)
     return parts
+
+
+def _start_network_listener(tab):
+    """必须在 get/滚动等动作前启动监听，否则已发生的请求不会进入队列。"""
+    try:
+        tab.listen.start(
+            targets=("kdocs.cn", "wpscdn.cn", "docer.wps.cn", "wps.cn"),
+            method=True,
+            res_type=True,
+        )
+    except Exception as e:
+        logger.debug(f"KDocs 网络监听启动失败，继续使用 DOM/JS 等待: {e}")
+
+
+def _wait_network_idle(tab, timeout=KDOCS_NETWORK_WAIT_SECONDS):
+    """等待网络安静，避免 KDocs 文档 JS 数据还没落到页面就开始解析。"""
+    try:
+        return tab.listen.wait_silent(timeout=timeout, targets_only=False, limit=0)
+    except Exception as e:
+        logger.debug(f"KDocs 网络静默等待失败，继续后续解析: {e}")
+        return False
+
+
+def _wait_text_stable(tab, rounds=KDOCS_STABLE_ROUNDS):
+    """等待 body 文本长度连续稳定，兜底处理虚拟滚动和异步渲染。"""
+    last_len = -1
+    stable = 0
+    for _ in range(max(rounds * 3, rounds)):
+        try:
+            text_len = int(tab.run_js("return document.body ? document.body.innerText.length : 0;") or 0)
+        except Exception:
+            text_len = 0
+        if text_len == last_len and text_len > 0:
+            stable += 1
+            if stable >= rounds:
+                return True
+        else:
+            stable = 0
+            last_len = text_len
+        tab.wait(KDOCS_STABLE_WAIT_SECONDS)
+    return False
+
+
+def _extract_editor_json_entries(tab):
+    """优先从 KDocs 编辑器 JSON 提取文档，并通过滚动加载虚拟片段。"""
+    ready = _wait_editor_json_ready(tab)
+    if not ready:
+        logger.info("KDocs 编辑器 JSON 等待超时，继续尝试分段读取")
+
+    entries = []
+    by_title = {}
+
+    def merge(items):
+        for item in items or []:
+            title = item.get("title", "")
+            if not title or not item.get("links"):
+                continue
+            if title not in by_title:
+                by_title[title] = item
+                entries.append(item)
+                continue
+            old_links = by_title[title].setdefault("links", [])
+            old_keys = {(link.get("type"), link.get("url")) for link in old_links}
+            for link in item.get("links", []):
+                key = (link.get("type"), link.get("url"))
+                if key not in old_keys:
+                    old_links.append(link)
+                    old_keys.add(key)
+
+    merge(_read_editor_json_entries(tab))
+    if 0 < KDOCS_MAX_ENTRIES <= len(entries):
+        logger.info(f"KDocs 编辑器 JSON 提取到前 {len(entries)} 条，停止继续滚动")
+        return entries
+
+    try:
+        scroll_h = int(tab.run_js(
+            "var c=document.querySelector('.otl-scroll-container'); return c ? c.scrollHeight : document.body.scrollHeight;"
+        ) or 0)
+    except Exception:
+        scroll_h = 0
+
+    if scroll_h > 1000:
+        positions = list(range(0, scroll_h, KDOCS_SCROLL_STEP))
+        if not positions or positions[-1] < scroll_h:
+            positions.append(scroll_h)
+
+        for pos in sorted(set(positions)):
+            tab.run_js(f"var c=document.querySelector('.otl-scroll-container'); if(c) c.scrollTop={pos};")
+            tab.wait(KDOCS_SCROLL_WAIT_SECONDS)
+            _wait_network_idle(tab, timeout=0.5)
+            merge(_read_editor_json_entries(tab))
+            if 0 < KDOCS_MAX_ENTRIES <= len(entries):
+                logger.info(f"KDocs 编辑器 JSON 提取到前 {len(entries)} 条，停止继续滚动")
+                break
+
+    if entries:
+        logger.info(f"KDocs 编辑器 JSON 分段提取完成: {len(entries)} 条")
+        return entries
+    return None
+
+
+def _read_editor_json_entries(tab):
+    """读取当前 KDocs 虚拟片段中的编辑器 JSON 条目。"""
+    script = r"""
+        return (() => {
+            function walk(node, paragraphs) {
+                if (!node) return;
+                if (node.type === 'paragraph' && node.content) {
+                    let text = '';
+                    let hrefs = [];
+                    for (const c of node.content) {
+                        if (c.type === 'text' && c.text) text += c.text;
+                        if (c.type === 'emoji' && c.attrs && c.attrs.emoji) text += c.attrs.emoji;
+                        if (c.marks) {
+                            for (const m of c.marks) {
+                                if (m.type === 'link' && m.attrs && m.attrs.href) hrefs.push(m.attrs.href);
+                            }
+                        }
+                    }
+                    paragraphs.push({text: text.trim(), hrefs});
+                }
+                if (node.content) node.content.forEach(child => walk(child, paragraphs));
+            }
+
+            const editor = window.COLLABX && window.COLLABX.editor;
+            if (!editor || typeof editor.getJSON !== 'function') {
+                return JSON.stringify({ok: false, reason: 'COLLABX.editor.getJSON not ready'});
+            }
+
+            const paragraphs = [];
+            walk(editor.getJSON(), paragraphs);
+
+            const noise = [
+                '搜索方法', '注意', '解决方法', '先转存', '取消悬浮',
+                '顶部工具栏', 'taskName - keyword', '邀你登录', '热门剧'
+            ];
+            const entries = [];
+            let cur = null;
+
+            function pushCur() {
+                if (cur && cur.title && cur.links.length) entries.push(cur);
+                cur = null;
+            }
+
+            function firstUrl(text, hrefs, re) {
+                for (const href of hrefs || []) {
+                    const m = String(href).match(re);
+                    if (m) return m[0];
+                }
+                const m = String(text || '').match(re);
+                return m ? m[0] : null;
+            }
+
+            for (const p of paragraphs) {
+                const t = (p.text || '').replace(/\u2006|\u200a/g, ' ').trim();
+                if (!t) continue;
+                if (noise.some(k => t.includes(k))) continue;
+
+                const baidu = firstUrl(t, p.hrefs, /https?:\/\/pan\.baidu\.com\/s\/[a-zA-Z0-9_-]+/);
+                const quark = firstUrl(t, p.hrefs, /https?:\/\/pan\.quark\.cn\/s\/[a-zA-Z0-9]+/);
+                const pwd = t.match(/(?:提取码|密码|pwd)\s*[：:\s]*([a-zA-Z0-9]{4,})/i);
+
+                if (baidu) {
+                    if (cur) cur.links.push({type: '百度网盘', url: baidu, extract_code: pwd ? pwd[1] : '1120'});
+                    continue;
+                }
+                if (pwd) {
+                    if (cur) {
+                        const link = [...cur.links].reverse().find(item => item.type === '百度网盘');
+                        if (link) link.extract_code = pwd[1];
+                    }
+                    continue;
+                }
+                if (quark) {
+                    if (cur) cur.links.push({type: '夸克网盘', url: quark});
+                    continue;
+                }
+
+                const title = t
+                    .replace(/^[\s.。、《》\[\]（）()，,：:;；!?！？-]+/, '')
+                    .replace(/[\s.。、《》\[\]（）()，,：:;；!?！？-]+$/, '')
+                    .trim();
+                if (!title || title.length > 120) continue;
+
+                pushCur();
+                cur = {title, links: []};
+                const tag = title.match(/【(.+?)】/);
+                if (tag) cur.tag = `【${tag[1]}】`;
+            }
+            pushCur();
+
+            return JSON.stringify({ok: true, total_entries: entries.length, entries});
+        })();
+    """
+    try:
+        raw = tab.run_js(script)
+        data = json.loads(raw) if isinstance(raw, str) else raw
+    except Exception as e:
+        logger.debug(f"KDocs 编辑器 JSON 提取失败: {e}")
+        return None
+
+    if not data or not data.get("ok"):
+        logger.info(f"KDocs 编辑器 JSON 未就绪: {(data or {}).get('reason')}")
+        return None
+
+    entries = data.get("entries") or []
+    return entries
+
+
+def _wait_editor_json_ready(tab):
+    """等待 KDocs 编辑器对象和正文 JSON 就绪。"""
+    checks = max(1, int(KDOCS_EDITOR_WAIT_SECONDS / 0.5))
+    script = """
+        return !!(
+            window.COLLABX &&
+            window.COLLABX.editor &&
+            typeof window.COLLABX.editor.getJSON === 'function' &&
+            window.COLLABX.editor.getJSON() &&
+            window.COLLABX.editor.getJSON().content &&
+            window.COLLABX.editor.getJSON().content.length
+        );
+    """
+    for _ in range(checks):
+        try:
+            if tab.run_js(script):
+                return True
+        except Exception:
+            pass
+        _wait_network_idle(tab, timeout=0.5)
+        tab.wait(0.5)
+    return False
 
 
 def _clean_text(text):
@@ -223,12 +465,20 @@ def _parse_document(text_parts):
 def _fetch_with_tab(tab, url, label):
     """使用已有标签页抓取单个数据源。"""
     logger.info(f"[{label}] 开始抓取: {url}")
+    _start_network_listener(tab)
     tab.get(url)
+    _wait_network_idle(tab)
     tab.wait(KDOCS_PAGE_WAIT_SECONDS)
     logger.info(f"[{label}] 页面加载完成: {tab.title}")
 
-    text_parts = _extract_all_content(tab)
-    entries = _parse_document(text_parts)
+    entries = _extract_editor_json_entries(tab)
+    if entries is None:
+        logger.info(f"[{label}] 编辑器 JSON 不可用，回退到 DOM 滚动提取")
+        text_parts = _extract_all_content(tab)
+        entries = _parse_document(text_parts)
+    if KDOCS_MAX_ENTRIES > 0 and len(entries) > KDOCS_MAX_ENTRIES:
+        logger.info(f"[{label}] 只同步前 {KDOCS_MAX_ENTRIES} 条，原始抓取 {len(entries)} 条")
+        entries = entries[:KDOCS_MAX_ENTRIES]
     logger.info(f"[{label}] 抓取完成: {len(entries)} 条")
     return entries
 

@@ -6,6 +6,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.anime import Anime, AnimeReminder, UserAnimeSubscription
 
 
+def _dt_iso(value) -> str:
+    return value.isoformat() if value else ""
+
+
+def _anime_item(a: Anime, is_subscribed: bool, is_reminded: bool | None = None) -> dict:
+    item = {
+        "anime_id": a.id,
+        "title": a.title,
+        "quality": a.quality or "",
+        "episode": a.episode or "",
+        "status": a.status,
+        "baidu_url": a.baidu_url or "",
+        "baidu_password": a.baidu_password or "",
+        "quark_url": a.quark_url or "",
+        "update_time": a.update_time or "",
+        "created_at": _dt_iso(a.created_at),
+        "updated_at": _dt_iso(a.updated_at),
+        "is_subscribed": is_subscribed,
+    }
+    if is_reminded is not None:
+        item["is_reminded"] = is_reminded
+    return item
+
+
 async def get_anime_library(
     db: AsyncSession,
     user_id: UUID,
@@ -55,19 +79,7 @@ async def get_anime_library(
     return {
         "total": total,
         "list": [
-            {
-                "anime_id": a.id,
-                "title": a.title,
-                "quality": a.quality or "",
-                "episode": a.episode or "",
-                "status": a.status,
-                "baidu_url": a.baidu_url or "",
-                "baidu_password": a.baidu_password or "",
-                "quark_url": a.quark_url or "",
-                "update_time": a.update_time or "",
-                "is_subscribed": a.id in subscribed_ids,
-                "is_reminded": a.id in reminded_ids,
-            }
+            _anime_item(a, is_subscribed=a.id in subscribed_ids, is_reminded=a.id in reminded_ids)
             for a in animes
         ],
     }
@@ -92,18 +104,7 @@ async def get_subscribed_list(db: AsyncSession, user_id: UUID) -> dict:
 
     return {
         "list": [
-            {
-                "anime_id": a.id,
-                "title": a.title,
-                "quality": a.quality or "",
-                "episode": a.episode or "",
-                "status": a.status,
-                "baidu_url": a.baidu_url or "",
-                "baidu_password": a.baidu_password or "",
-                "quark_url": a.quark_url or "",
-                "update_time": a.update_time or "",
-                "is_subscribed": True,
-            }
+            _anime_item(a, is_subscribed=True, is_reminded=a.id in reminded_ids)
             for a in animes
         ],
     }

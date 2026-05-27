@@ -1,13 +1,17 @@
 import os
 import uuid as _uuid
+import json
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from app.database import get_db
 from app.dependencies import get_current_user_id
+from app.models.config_models import Feedback
 from app.schemas.response import success_response, error_response, CodeEnum
 from app.services.admin_service import (
     create_banner,
@@ -146,6 +150,32 @@ class MineSectionsBatchReq(BaseModel):
     sections: list[MineSectionReq]
 
 
+class FeedbackUpdateReq(BaseModel):
+    status: str | None = None
+    admin_reply: str | None = None
+
+
+def _feedback_item(row: Feedback) -> dict:
+    screenshots = []
+    if row.screenshots:
+        try:
+            screenshots = json.loads(row.screenshots)
+        except Exception:
+            screenshots = []
+    return {
+        "id": row.id,
+        "user_id": row.user_id,
+        "type": row.type,
+        "content": row.content,
+        "screenshots": screenshots,
+        "contact": row.contact or "",
+        "status": row.status or "pending",
+        "admin_reply": row.admin_reply or "",
+        "created_at": row.created_at.isoformat() if row.created_at else "",
+        "replied_at": row.replied_at.isoformat() if row.replied_at else "",
+    }
+
+
 # ===== 用户管理 =====
 @router.get("/users")
 async def admin_users(
@@ -205,6 +235,51 @@ async def admin_stats_trend(
 ):
     data = await get_user_trend(db, days)
     return success_response(data=data)
+
+
+# ===== 用户反馈 =====
+@router.get("/feedback")
+async def admin_feedback_list(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    status: str | None = Query(None),
+    keyword: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(Feedback)
+    count_query = select(Feedback)
+    if status:
+        query = query.where(Feedback.status == status)
+        count_query = count_query.where(Feedback.status == status)
+    if keyword:
+        kw = f"%{keyword}%"
+        query = query.where((Feedback.content.ilike(kw)) | (Feedback.user_id.ilike(kw)) | (Feedback.contact.ilike(kw)))
+        count_query = count_query.where((Feedback.content.ilike(kw)) | (Feedback.user_id.ilike(kw)) | (Feedback.contact.ilike(kw)))
+
+    total_result = await db.execute(select(func.count()).select_from(count_query.subquery()))
+    total = total_result.scalar() or 0
+    result = await db.execute(
+        query.order_by(Feedback.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    rows = result.scalars().all()
+    return success_response(data={"total": total, "list": [_feedback_item(row) for row in rows]})
+
+
+@router.put("/feedback/{feedback_id}")
+async def admin_update_feedback(feedback_id: int, req: FeedbackUpdateReq, db: AsyncSession = Depends(get_db)):
+    feedback = await db.get(Feedback, feedback_id)
+    if not feedback:
+        return error_response(CodeEnum.NOT_FOUND, "反馈不存在")
+    if req.status is not None:
+        feedback.status = req.status
+    if req.admin_reply is not None:
+        feedback.admin_reply = req.admin_reply
+        feedback.replied_at = datetime.now()
+    await db.commit()
+    await db.refresh(feedback)
+    return success_response(data=_feedback_item(feedback))
 
 
 # ===== 广告配置 =====

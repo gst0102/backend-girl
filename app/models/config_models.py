@@ -71,6 +71,9 @@ class Feedback(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     screenshots: Mapped[str] = mapped_column(Text, nullable=True)  # JSON 格式的截图列表
     contact: Mapped[str] = mapped_column(String(200), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, server_default=text("'pending'"))
+    admin_reply: Mapped[str] = mapped_column(Text, nullable=True)
+    replied_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 

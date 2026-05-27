@@ -5,6 +5,7 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -125,27 +126,35 @@ async def submit_feedback(
 feedback_router = APIRouter(prefix="")
 
 
+class FeedbackSubmitRequest(BaseModel):
+    content: str = Field(..., max_length=500)
+    screenshots: list[str] | None = None
+    contact: str | None = None
+    platform: str | None = None
+    type: str | None = "feedback"
+
+
 @feedback_router.post("/feedback")
 async def submit_feedback_client(
-    content: str = Form(..., max_length=500, description="反馈内容"),
-    image_url: str = Form(None, description="截图URL，需先通过接口41上传"),
-    platform: str = Form(None, description="平台标识"),
+    req: FeedbackSubmitRequest,
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    if not content or len(content) > 500:
+    content = req.content.strip()
+    if not content:
         return error_response(CodeEnum.PARAM_ERROR, "内容不能为空且不超过500字符")
-    screenshots = [image_url] if image_url else None
+    screenshots = req.screenshots or None
     feedback = Feedback(
         user_id=user_id,
-        type="feedback",
+        type=req.type or "feedback",
         content=content,
-        contact=platform,
+        contact=req.contact or req.platform,
         screenshots=json.dumps(screenshots) if screenshots else None,
     )
     db.add(feedback)
     await db.commit()
-    return success_response(data=None)
+    await db.refresh(feedback)
+    return success_response(data={"id": feedback.id})
 
 
 # 反馈截图上传（接口41）

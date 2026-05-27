@@ -89,6 +89,7 @@ class UnlockConfigReq(BaseModel):
     water: int | None = None
     anime_remind: int | None = None
     anime_preview: int | None = None
+    anime_drive: int | None = None
     drive: int | None = None
 
 
@@ -313,7 +314,12 @@ async def admin_get_unlock_config(db: AsyncSession = Depends(get_db)):
 
 @router.put("/config/unlock")
 async def admin_update_unlock_config(req: UnlockConfigReq, db: AsyncSession = Depends(get_db)):
-    await update_unlock_config(db, req.model_dump(exclude_none=True))
+    data = req.model_dump(exclude_none=True)
+    if "drive" in data and "anime_drive" not in data:
+        data["anime_drive"] = data.pop("drive")
+    else:
+        data.pop("drive", None)
+    await update_unlock_config(db, data)
     await db.commit()
     return success_response()
 

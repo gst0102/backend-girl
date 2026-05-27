@@ -24,6 +24,8 @@ scheduler = AsyncIOScheduler(
     timezone=ZoneInfo("Asia/Shanghai"),
 )
 
+SCHEDULER_TZ = ZoneInfo("Asia/Shanghai")
+
 
 def start_scheduler():
     # 每日任务（00:00 执行）
@@ -35,7 +37,7 @@ def start_scheduler():
     # KDocs 数据同步注册一个启动后延迟执行的初始化任务
     scheduler.add_job(
         init_kdocs_jobs_after_start, "date",
-        run_date=datetime.now(),
+        run_date=datetime.now(SCHEDULER_TZ),
         id="init_kdocs_jobs",
         max_instances=1,
     )
@@ -112,7 +114,7 @@ async def init_kdocs_jobs_after_start():
         scheduler.add_job(
             sync_all_kdocs_sources,
             "date",
-            run_date=datetime.now(),
+            run_date=datetime.now(SCHEDULER_TZ),
             id="initial_kdocs_full_sync",
             replace_existing=True,
             max_instances=1,

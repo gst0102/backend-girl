@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -57,16 +58,28 @@ async def init_kdocs_jobs_after_start():
     """从数据库读取所有启用的数据源，按各自cron注册独立定时任务（启动后异步执行）"""
     import asyncio
     from app.database import async_session
+    from app.models.anime import Anime
     from app.models.admin_models import KDocsSource
-    from sqlalchemy import select
+    from sqlalchemy import func, select
 
     try:
         async with async_session() as db:
             result = await db.execute(select(KDocsSource).where(KDocsSource.enabled == True))
             sources = result.scalars().all()
+            source_types = sorted({src.type for src in sources})
+            counts = {}
+            if source_types:
+                count_result = await db.execute(
+                    select(Anime.type, func.count(Anime.id))
+                    .where(Anime.type.in_(source_types))
+                    .group_by(Anime.type)
+                )
+                counts = dict(count_result.all())
     except Exception as e:
         logger.warning(f"读取数据源时出错（可能是首次部署，表不存在）: {e}")
         sources = []
+        source_types = []
+        counts = {}
 
     if not sources:
         logger.info("没有启用的KDocs数据源，跳过注册定时任务")
@@ -92,6 +105,19 @@ async def init_kdocs_jobs_after_start():
                 logger.warning(f"数据源[{src.name}]的cron表达式无效: {src.cron_expression}")
         except Exception as e:
             logger.warning(f"注册数据源[{src.name}]定时任务失败: {e}")
+
+    initial_sync_enabled = os.getenv("KDOCS_INITIAL_FULL_SYNC", "1").lower() in {"1", "true", "yes"}
+    missing_types = [media_type for media_type in source_types if counts.get(media_type, 0) == 0]
+    if initial_sync_enabled and missing_types:
+        scheduler.add_job(
+            sync_all_kdocs_sources,
+            "date",
+            run_date=datetime.now(),
+            id="initial_kdocs_full_sync",
+            replace_existing=True,
+            max_instances=1,
+        )
+        logger.info(f"KDocs 检测到空数据类型 {missing_types}，已注册首次全量同步任务")
 
 
 def shutdown_scheduler():

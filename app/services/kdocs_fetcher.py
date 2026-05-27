@@ -135,7 +135,7 @@ def _wait_text_stable(tab, rounds=KDOCS_STABLE_ROUNDS):
     return False
 
 
-def _extract_editor_json_entries(tab):
+def _extract_editor_json_entries(tab, max_entries=KDOCS_MAX_ENTRIES):
     """优先从 KDocs 编辑器 JSON 提取文档，并通过滚动加载虚拟片段。"""
     ready = _wait_editor_json_ready(tab)
     if not ready:
@@ -162,7 +162,7 @@ def _extract_editor_json_entries(tab):
                     old_keys.add(key)
 
     merge(_read_editor_json_entries(tab))
-    if 0 < KDOCS_MAX_ENTRIES <= len(entries):
+    if 0 < max_entries <= len(entries):
         logger.info(f"KDocs 编辑器 JSON 提取到前 {len(entries)} 条，停止继续滚动")
         return entries
 
@@ -183,7 +183,7 @@ def _extract_editor_json_entries(tab):
             tab.wait(KDOCS_SCROLL_WAIT_SECONDS)
             _wait_network_idle(tab, timeout=0.5)
             merge(_read_editor_json_entries(tab))
-            if 0 < KDOCS_MAX_ENTRIES <= len(entries):
+            if 0 < max_entries <= len(entries):
                 logger.info(f"KDocs 编辑器 JSON 提取到前 {len(entries)} 条，停止继续滚动")
                 break
 
@@ -462,7 +462,7 @@ def _parse_document(text_parts):
     return entries
 
 
-def _fetch_with_tab(tab, url, label):
+def _fetch_with_tab(tab, url, label, max_entries=KDOCS_MAX_ENTRIES):
     """使用已有标签页抓取单个数据源。"""
     logger.info(f"[{label}] 开始抓取: {url}")
     _start_network_listener(tab)
@@ -471,24 +471,24 @@ def _fetch_with_tab(tab, url, label):
     tab.wait(KDOCS_PAGE_WAIT_SECONDS)
     logger.info(f"[{label}] 页面加载完成: {tab.title}")
 
-    entries = _extract_editor_json_entries(tab)
+    entries = _extract_editor_json_entries(tab, max_entries=max_entries)
     if entries is None:
         logger.info(f"[{label}] 编辑器 JSON 不可用，回退到 DOM 滚动提取")
         text_parts = _extract_all_content(tab)
         entries = _parse_document(text_parts)
-    if KDOCS_MAX_ENTRIES > 0 and len(entries) > KDOCS_MAX_ENTRIES:
-        logger.info(f"[{label}] 只同步前 {KDOCS_MAX_ENTRIES} 条，原始抓取 {len(entries)} 条")
-        entries = entries[:KDOCS_MAX_ENTRIES]
+    if max_entries > 0 and len(entries) > max_entries:
+        logger.info(f"[{label}] 只同步前 {max_entries} 条，原始抓取 {len(entries)} 条")
+        entries = entries[:max_entries]
     logger.info(f"[{label}] 抓取完成: {len(entries)} 条")
     return entries
 
 
-def fetch_single_source(url, label):
+def fetch_single_source(url, label, max_entries=KDOCS_MAX_ENTRIES):
     """抓取单个数据源"""
     browser = None
     try:
         browser, tab = _create_headless_browser()
-        return _fetch_with_tab(tab, url, label)
+        return _fetch_with_tab(tab, url, label, max_entries=max_entries)
     except Exception as e:
         logger.error(f"[{label}] 抓取出错: {e}")
         import traceback
@@ -558,7 +558,7 @@ async def fetch_all_sources():
         browser, tab = _create_headless_browser()
         for src in sources:
             try:
-                entries = _fetch_with_tab(tab, src.url, src.name)
+                entries = _fetch_with_tab(tab, src.url, src.name, max_entries=0)
             except Exception as e:
                 logger.error(f"[{src.name}] 抓取出错: {e}")
                 import traceback

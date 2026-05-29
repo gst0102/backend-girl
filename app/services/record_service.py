@@ -10,6 +10,7 @@ from app.models.record import Record
 from app.models.user import User
 from app.events.base import event_bus
 from app.utils.calendar_helper import get_period_day_count
+from app.utils.time_helper import beijing_now, beijing_today
 
 BASE_FEATURES = ["poop", "period"]
 BADGE_THRESHOLDS = [7, 14, 30]
@@ -34,17 +35,22 @@ async def create_record(
     if feature.scalar_one_or_none() is None:
         raise ValueError("FEATURE_LOCKED")
 
-    # # 一天只能记录一次的类型检查
-    # if record_type in SINGLE_PER_DAY_TYPES:
-    #     existing = await db.execute(
-    #         select(Record).where(
-    #             Record.user_id == user_id,
-    #             Record.record_type == record_type,
-    #             Record.record_date == record_date,
-    #         )
-    #     )
-    #     if existing.scalar_one_or_none() is not None:
-    #         raise ValueError("RECORD_EXISTS")
+    existing_result = await db.execute(
+        select(Record).where(
+            Record.user_id == user_id,
+            Record.record_type == record_type,
+            Record.record_date == record_date,
+        )
+    )
+    existing = existing_result.scalar_one_or_none()
+
+    user = await db.get(User, user_id)
+    user.last_record_at = beijing_now()
+
+    if existing is not None:
+        existing.record_value = record_value
+        await db.flush()
+        return existing.id, user.continuous_days
 
     # 创建记录
     record = Record(
@@ -54,10 +60,6 @@ async def create_record(
         record_value=record_value,
     )
     db.add(record)
-
-    # 更新用户 last_record_at
-    user = await db.get(User, user_id)
-    user.last_record_at = datetime.now()
     
     # 只有拉屎才增加连续记录天数
     if record_type == "poop":
@@ -146,7 +148,7 @@ async def get_calendar_data(
             records_map[key] = []
         records_map[key].append(r.record_type)
 
-    today = date.today()
+    today = beijing_today()
     days = get_month_days(year, month)
     for d in days:
         if d["date"] in date_has_record:
@@ -168,7 +170,7 @@ ALL_FEATURE_TYPES = ["poop", "period", "sleep", "water", "mood", "exercise", "we
 
 
 async def get_today_status(db: AsyncSession, user_id: UUID) -> dict:
-    today = date.today()
+    today = beijing_today()
 
     # 获取用户解锁的功能
     features_result = await db.execute(
@@ -240,7 +242,7 @@ async def calculate_continuous_days(db: AsyncSession, user_id: UUID) -> int:
     if not dates:
         return 0
 
-    if dates[0] < date.today():
+    if dates[0] < beijing_today():
         return 0
 
     count = 1
